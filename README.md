@@ -1,5 +1,5 @@
-# Lending-Club-Loan-Data
+# SF Bike Trips
 
 Kaggle competition
 
-https://www.kaggle.com/wendykan/lending-club-loan-data
+https://www.kaggle.com/benhamner/sf-bay-area-bike-share
