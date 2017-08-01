@@ -1,0 +1,188 @@
+---
+title: "SF Bike Trips Analysis"
+author:
+- Zihao Zhang
+- Data Science, Analytic Partners
+- zihao.zhang@analyticpartners.com
+date: "July 31, 2017"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+  toc: true
+---
+
+```{r include=FALSE}
+chooseCRANmirror(graphics = FALSE, ind = 1)
+source("P:/Lending-Club-Loan-Data/trip_insight.R")
+require("knitr")
+```
+
+## Content
+
+The slides showing the whole process on machine learning project on a public data set San Francisco Bike Usage data set (https://www.kaggle.com/benhamner/sf-bay-area-bike-share)
+
+- Data Processing and Exploring
+- Feaure Engineering
+- Modeling, parameter tuning
+- Model comparison
+
+
+
+## Total Market Trend across Time
+
+There appears to be an intersting split in the data. There is a vairable, perhaps it has to do with Day of Week. 
+
+```{r, echo=FALSE, fig.height=4, fig.width=8}
+library("ggplot2")
+ggplot(trip_date, aes(x = date, y = trip_count)) + geom_point() + geom_smooth(color = "#1A1A1A",method = 'loess') + 
+  labs(x = "Date", y = "# of trips", title = "Daily # of Bicylcle Trips from 2013 - 2015") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+## Different Patterns between Weekday and Weekend
+
+It's always important to visualize the results first. The following plot shows that there are different patterns for weekday and weekends.
+
+```{r,echo=FALSE, fig.height=2.6, fig.width=8}
+ggplot(isweekend_date, aes(x = date, y=count)) + geom_point(aes(color = is_weekend), size = 3, alpha = 0.65) +
+  labs(x = "Date", y = "Total # of Bicycle Trips") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Bicycle Trip Heatmap during Daytime
+
+
+Around 8-9AM and 5-6PM at weekdays colored most. My guess is that most part of bicycle users are locals, they use bicycle for their daily commute between office and home.
+
+```{r, echo = FALSE, fig.height=4, fig.width=8}
+ggplot(trip_hour_wday, aes(x = start_hour, y = start_wday, fill = count)) + geom_tile() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.6), legend.title = element_blank(), 
+        legend.position = "top", legend.direction = "horizontal") +
+  labs(x = "Hour of Day", y = "Day of Week of trips", title = "# of bicycle trips ") +
+  scale_fill_gradient(low = "orange", high = "black") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## Factor by User Type
+
+Subscribers dominate bicycle usage on the weekday. At weekend, the usage is more balanced.
+
+
+```{r, echo = FALSE, fig.height=4, fig.width=8}
+ggplot(trip, aes(x = date)) + 
+  geom_bar(aes(color=subscription_type), stat="count", position = "stack") +
+  facet_grid(~is_weekend) +
+  labs(x = "Day of Week", y = "# of trips", 
+       title = "Customer Vs.Subscriber on Weekend and Weekdays") +
+  theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_blank())
+```
+
+## Bicycle Trips Distribution at Different Cities
+
+- San Francisco has the larget Bike Share demanded.
+- Followed by San Jose.
+- Bike Share program is spread in Bay Area.
+
+```{r, , echo = FALSE, fig.height=4, fig.align='left'}
+library("ggmap")
+ggmap(sf) + geom_point(data = map_trip, aes(x = long, y = lat, size = count, color = count)) +
+  scale_size(name = "# Total Trips", range = c(3, 12)) + theme(legend.position = "none")
+```
+
+## Features Engineering
+
+Feature engineering is important. Usually in a machine learning project, more than 50% time are spent in data exploring and feature engeering
+
+- Find all of the **holidays** during our time span
+- Convert dates to **season**
+- one-hot-encoding for categorical variables
+
+
+
+## Modeling Process
+
+Outcome is the number of trips taken, at a given hour per day, with bike sharing program.
+
+Input features: type of day, subscription_type, city and weather report (temperature, wind speed, humidity, etc.)
+
+Models I used are two popular tree-based machine learning models, they are famous for the high prediction accuracy:
+
+- Random Forest
+- Gradient Boosting
+
+
+
+
+## Random Forest
+
+
+- Tuning parameters: number of trees, number of predictors considered at each split.
+- Use 10 fold cross validation to tune parameters and RMSE on the test dataset as validation metrics
+- Random Forest randomly generate multiple trees and average the all trees eventually. So there are some variation along the direction to better model (this is different from XGboost that you will see soon)
+
+
+```{r, echo=FALSE, fig.height=2.5}
+ggplot(MSE_matrix_rf, aes(x=ntree, y=value, colour = variable)) + geom_line() +geom_point() +
+  labs(x="number of trees", y="Test MSE", title = "Random Forest")
+```
+
+
+## Gradient Boosting
+
+
+- Tuning parameters: number of trees, depth of the treee, learning rate.
+- Use 10 fold cross validation to tune parameters and RMSE on the test dataset as validation metrics.
+- XGboost leverage Gradient Descent method, so we will see the RMSE keep decreasing with more steps. But we need to carefully tune the learning rate parameter to avoid overfitting. 
+
+
+```{r, echo=FALSE, fig.height=2.5}
+ggplot(MSE_matrix, aes(x=ntree, y=value, colour = variable)) + geom_line() +
+  labs(x="number of trees", y="Test MSE")
+```
+
+
+
+## Model Comparison: Variable Importance
+
+- Both Random Forest and XGboost Tree picked up the most important features: 8AM, 5PM, and is_weekend. which means time is the most important for bike usage
+- Random Forest "thinks" that temperature and wind speed are also important, while XGboost Tree "thinks" only time matters
+- Both Model reached good prediction accuaracy. With different assumption and estimation method, we will see slightly different results, which is also why we want to try different model and eventually ensemble the results. "All models are wrong, but some are useful"
+
+
+```{r, echo=FALSE, fig.height=6, fig.width=7.5}
+VI_F = varImpPlot(best_model,main = "Random Forest")
+```
+```{r, echo=FALSE, fig.height=6, fig.width=7.5}
+xgb.plot.importance(importance_matrix[1:20,],main="XGboost")
+```
+
+
+
+
+## Model Comparison: Predicted Value
+
+Both Random Forest and XGboost have pretty good estimation in new test dataset. 
+
+```{r, echo=FALSE, fig.height==4}
+ggplot(boost.AP, aes(x = date, y = value, colour = variable)) + geom_line() +
+  labs(x = "Date", y = "number of trips", title = "Predicted Values vs Actual Values (Gradient Boosting)") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position="none")
+```
+
+```{r, echo=FALSE, fig.height=4}
+ggplot(AP, aes(x = date, y = value, colour = variable)) + geom_line() +
+  labs(x = "Date", y = "number of trips", title = "Predicted Values vs Actual Values(Random Forest)") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position="none")
+```
+
+
+## Summary
+
+- Both models are aimed to predict how many trips will occur in the San Francisco Bay Area with bike sharing service.
+- The bike usage is more affected by the day type - use more on weekdays, and less affected by the weather.
+- SF has a larger service than other cites in Bay Area.
+- Customers have similar usage patterns in different cities.
